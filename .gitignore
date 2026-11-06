@@ -1,0 +1,22 @@
+# Rust build output
+/target/
+**/*.rs.bk
+
+# soroban-sdk test snapshots (regenerated on every `cargo test`)
+**/test_snapshots/
+
+# Local environment and Stellar CLI state. Never commit keys.
+.env
+.env.*
+!.env.example
+.stellar/
+.soroban/
+
+# Deployment outputs produced by scripts/deploy-testnet.sh
+/deployments/*.local.json
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

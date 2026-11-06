@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/soroban-lens/soroban-lens-contracts/fixtures/scenarios.schema.json",
+  "title": "SorobanLens fixture scenario catalog",
+  "description": "Reproducible Soroban contract invocations with verified outcomes and ground-truth diagnoses. Mirrors crates/scenario-runner/src/catalog.rs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "soroban_sdk_version", "contracts", "scenarios"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "soroban_sdk_version": { "type": "string" },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/contract" }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scenario" }
+    }
+  },
+  "$defs": {
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "errors"],
+      "properties": {
+        "description": { "type": "string" },
+        "constructor_args": { "type": "array", "items": { "$ref": "#/$defs/value" } },
+        "errors": {
+          "description": "Contract error code (decimal string) -> #[contracterror] variant name.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[1-9][0-9]*$" },
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "contract", "function", "auth", "expected", "diagnosis"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9_]+/[a-z0-9-]+$" },
+        "title": { "type": "string" },
+        "contract": { "type": "string" },
+        "function": { "type": "string" },
+        "args": { "type": "array", "items": { "$ref": "#/$defs/value" } },
+        "auth": {
+          "oneOf": [
+            { "enum": ["none", "mock_all"] },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["signers"],
+              "properties": { "signers": { "type": "array", "items": { "type": "string" }, "minItems": 1 } }
+            }
+          ]
+        },
+        "setup": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ledger_sequence": { "type": "integer", "minimum": 0 },
+            "budget": { "enum": ["default", "unlimited"] },
+            "calls": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["function"],
+                "properties": {
+                  "function": { "type": "string" },
+                  "args": { "type": "array", "items": { "$ref": "#/$defs/value" } }
+                }
+              }
+            }
+          }
+        },
+        "expected": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["outcome"],
+              "properties": {
+                "outcome": { "const": "success" },
+                "return_value": { "$ref": "#/$defs/value" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["outcome", "error", "caller_observes"],
+              "properties": {
+                "outcome": { "const": "failure" },
+                "error": { "$ref": "#/$defs/hostError" },
+                "contract_error": { "type": "string" },
+                "caller_observes": {
+                  "description": "Error a calling contract sees via try_invoke_contract; null = not catchable.",
+                  "oneOf": [{ "$ref": "#/$defs/hostError" }, { "type": "null" }]
+                },
+                "wasm_error": {
+                  "description": "Expected error under Wasm execution when it differs from `error`. Source-derived, not executed.",
+                  "$ref": "#/$defs/hostError"
+                }
+              }
+            }
+          ]
+        },
+        "diagnosis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "summary"],
+          "properties": {
+            "category": {
+              "enum": [
+                "none",
+                "authorization_failure",
+                "invalid_arguments",
+                "contract_execution_failure",
+                "resource_limit_exceeded",
+                "missing_contract_reference",
+                "simulation_failure",
+                "network_rpc_error",
+                "insufficient_information"
+              ]
+            },
+            "summary": { "type": "string" },
+            "likely_causes": { "type": "array", "items": { "type": "string" } },
+            "suggested_fixes": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "hostError": {
+      "description": "Debug form of a Soroban ScError, e.g. 'Error(Auth, InvalidAction)' or 'Error(Contract, #3)'.",
+      "type": "string",
+      "pattern": "^Error\\((Contract, #[0-9]+|(WasmVm|Context|Storage|Object|Crypto|Events|Budget|Value|Auth), (ArithDomain|IndexBounds|InvalidInput|MissingValue|ExistingValue|ExceededLimit|InvalidAction|InternalError|UnexpectedType|UnexpectedSize))\\)$"
+    },
+    "value": {
+      "description": "Typed Soroban value. 64/128-bit integers are strings to avoid JSON precision loss.",
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["type"], "properties": { "type": { "const": "void" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "value"], "properties": { "type": { "const": "bool" }, "value": { "type": "boolean" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "value"], "properties": { "type": { "const": "u32" }, "value": { "type": "integer", "minimum": 0, "maximum": 4294967295 } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "value"], "properties": { "type": { "const": "u64" }, "value": { "type": "string", "pattern": "^[0-9]+$" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "value"], "properties": { "type": { "const": "i128" }, "value": { "type": "string", "pattern": "^-?[0-9]+$" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "value"], "properties": { "type": { "const": "string" }, "value": { "type": "string" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "value"], "properties": { "type": { "const": "symbol" }, "value": { "type": "string", "pattern": "^[a-zA-Z0-9_]{0,32}$" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "actor"], "properties": { "type": { "const": "address" }, "actor": { "type": "string" } } }
+      ]
+    }
+  }
+}

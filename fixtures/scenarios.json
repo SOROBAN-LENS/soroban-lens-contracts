@@ -1,0 +1,1370 @@
+{
+  "schema_version": 1,
+  "soroban_sdk_version": "29.0.1",
+  "contracts": {
+    "auth-guard": {
+      "description": "Admin-controlled config value; shows host-level and contract-level authorization failures.",
+      "constructor_args": [
+        {
+          "type": "address",
+          "actor": "admin"
+        },
+        {
+          "type": "u32",
+          "value": 1
+        }
+      ],
+      "errors": {
+        "1": "NotAdmin",
+        "2": "SameAdmin"
+      }
+    },
+    "input-validator": {
+      "description": "Limit-order registry with one contract error per validation rule.",
+      "constructor_args": [],
+      "errors": {
+        "1": "AmountNotPositive",
+        "2": "AmountTooLarge",
+        "3": "PriceNotPositive",
+        "4": "ExpiryInPast",
+        "5": "ExpiryTooFar",
+        "6": "MemoTooLong",
+        "7": "OrderNotFound"
+      }
+    },
+    "execution-failure": {
+      "description": "Predictable runtime failures: overflow, panics, missing storage, missing contracts, budget exhaustion.",
+      "constructor_args": [
+        {
+          "type": "address",
+          "actor": "admin"
+        }
+      ],
+      "errors": {
+        "1": "DivisionByZero",
+        "2": "Overflow",
+        "3": "MissingEntry",
+        "4": "Halted",
+        "5": "TooManyIterations"
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "id": "auth-guard/value/read",
+      "title": "Read the configuration value",
+      "contract": "auth-guard",
+      "function": "value",
+      "args": [],
+      "auth": "none",
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "u32",
+          "value": 1
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "Read-only call succeeds; no authorization is needed.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "auth-guard/set_value/admin-signed",
+      "title": "Admin sets the value with authorization",
+      "contract": "auth-guard",
+      "function": "set_value",
+      "args": [
+        {
+          "type": "u32",
+          "value": 42
+        }
+      ],
+      "auth": {
+        "signers": [
+          "admin"
+        ]
+      },
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "void"
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "The admin authorized the call, so it succeeds.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "auth-guard/set_value/missing-auth",
+      "title": "Set the value with no authorization",
+      "contract": "auth-guard",
+      "function": "set_value",
+      "args": [
+        {
+          "type": "u32",
+          "value": 42
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Auth, InvalidAction)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "authorization_failure",
+        "summary": "The contract required the admin's authorization (require_auth) and the transaction did not include it. The host aborted the call before the contract could run any further.",
+        "likely_causes": [
+          "The transaction was not signed by the account whose authorization the contract requires.",
+          "The authorization entry was built for different arguments, a different function, or a different contract.",
+          "The transaction was submitted without first simulating it to collect the required authorization entries."
+        ],
+        "suggested_fixes": [
+          "Check which address the failing function calls require_auth() on and make sure that account signs.",
+          "Re-simulate the transaction with the final arguments and sign the returned authorization entries.",
+          "Look in the diagnostic events for the address whose authorization failed."
+        ]
+      }
+    },
+    {
+      "id": "auth-guard/set_value/wrong-signer",
+      "title": "Set the value signed by a non-admin account",
+      "contract": "auth-guard",
+      "function": "set_value",
+      "args": [
+        {
+          "type": "u32",
+          "value": 42
+        }
+      ],
+      "auth": {
+        "signers": [
+          "mallory"
+        ]
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Auth, InvalidAction)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "authorization_failure",
+        "summary": "Authorization came from an account other than the one the contract requires. The host rejects it with the same error as missing authorization.",
+        "likely_causes": [
+          "The wrong account signed: the contract checks the stored admin, not the transaction source.",
+          "The authorization entry was built for different arguments, a different function, or a different contract."
+        ],
+        "suggested_fixes": [
+          "Check which address the failing function calls require_auth() on and make sure that account signs.",
+          "Re-simulate the transaction with the final arguments and sign the returned authorization entries.",
+          "Look in the diagnostic events for the address whose authorization failed."
+        ]
+      }
+    },
+    {
+      "id": "auth-guard/set_value_as/admin",
+      "title": "Admin sets the value via set_value_as",
+      "contract": "auth-guard",
+      "function": "set_value_as",
+      "args": [
+        {
+          "type": "address",
+          "actor": "admin"
+        },
+        {
+          "type": "u32",
+          "value": 7
+        }
+      ],
+      "auth": {
+        "signers": [
+          "admin"
+        ]
+      },
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "void"
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "The caller is the admin and authorized the call.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "auth-guard/set_value_as/not-admin",
+      "title": "Authenticated non-admin calls set_value_as",
+      "contract": "auth-guard",
+      "function": "set_value_as",
+      "args": [
+        {
+          "type": "address",
+          "actor": "mallory"
+        },
+        {
+          "type": "u32",
+          "value": 7
+        }
+      ],
+      "auth": {
+        "signers": [
+          "mallory"
+        ]
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #1)",
+        "contract_error": "NotAdmin",
+        "caller_observes": "Error(Contract, #1)"
+      },
+      "diagnosis": {
+        "category": "authorization_failure",
+        "summary": "The caller's signature was valid, but the contract's own permission check rejected them because they are not the admin (contract error NotAdmin = 1).",
+        "likely_causes": [
+          "The caller does not have the role this function requires.",
+          "The admin was changed and the client is using a stale address."
+        ],
+        "suggested_fixes": [
+          "Call the contract's admin() function to see the current admin.",
+          "Submit the call from the admin account, or have the admin grant the role."
+        ]
+      }
+    },
+    {
+      "id": "auth-guard/transfer_admin/both-signed",
+      "title": "Admin transfer signed by both parties",
+      "contract": "auth-guard",
+      "function": "transfer_admin",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        }
+      ],
+      "auth": {
+        "signers": [
+          "admin",
+          "alice"
+        ]
+      },
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "void"
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "Both the current and the new admin authorized the transfer.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "auth-guard/transfer_admin/partial-auth",
+      "title": "Admin transfer signed only by the current admin",
+      "contract": "auth-guard",
+      "function": "transfer_admin",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        }
+      ],
+      "auth": {
+        "signers": [
+          "admin"
+        ]
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Auth, InvalidAction)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "authorization_failure",
+        "summary": "The function needs authorization from two addresses. Only one was provided, so the host failed the second require_auth().",
+        "likely_causes": [
+          "A multi-party operation was signed by only some of the required parties."
+        ],
+        "suggested_fixes": [
+          "Collect authorization entries from every address the simulation lists, then submit.",
+          "Check the diagnostic events to find the address whose authorization is missing."
+        ]
+      }
+    },
+    {
+      "id": "auth-guard/transfer_admin/same-admin",
+      "title": "Transfer admin to the current admin",
+      "contract": "auth-guard",
+      "function": "transfer_admin",
+      "args": [
+        {
+          "type": "address",
+          "actor": "admin"
+        }
+      ],
+      "auth": "mock_all",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #2)",
+        "contract_error": "SameAdmin",
+        "caller_observes": "Error(Contract, #2)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "new_admin is the current admin, so the transfer would do nothing. The contract rejected it (contract error SameAdmin = 2).",
+        "likely_causes": [
+          "The client passed the current admin's address by mistake."
+        ],
+        "suggested_fixes": [
+          "Pass a different address as new_admin."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/valid",
+      "title": "Create a valid order",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "100"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 2000
+        },
+        {
+          "type": "string",
+          "value": "first order"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "u64",
+          "value": "0"
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "All inputs pass validation; the first order gets id 0.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "input-validator/create_order/amount-zero",
+      "title": "Order amount of zero",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "0"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 2000
+        },
+        {
+          "type": "string",
+          "value": "first order"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #1)",
+        "contract_error": "AmountNotPositive",
+        "caller_observes": "Error(Contract, #1)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "amount must be greater than zero (contract error AmountNotPositive = 1).",
+        "likely_causes": [
+          "amount was left at zero, or the client sent a negative number."
+        ],
+        "suggested_fixes": [
+          "Pass a positive amount in the token's smallest unit."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/amount-too-large",
+      "title": "Order amount above the maximum",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "10000000000000001"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 2000
+        },
+        {
+          "type": "string",
+          "value": "first order"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #2)",
+        "contract_error": "AmountTooLarge",
+        "caller_observes": "Error(Contract, #2)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "amount is above the contract's maximum of 10,000,000,000,000,000 (contract error AmountTooLarge = 2).",
+        "likely_causes": [
+          "The amount was scaled by the token's decimals twice.",
+          "A whole-unit value was sent where the smallest unit was expected, or the other way round."
+        ],
+        "suggested_fixes": [
+          "Check how the client applies decimals.",
+          "Keep amounts at or below MAX_AMOUNT."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/price-negative",
+      "title": "Negative order price",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "100"
+        },
+        {
+          "type": "i128",
+          "value": "-1"
+        },
+        {
+          "type": "u32",
+          "value": 2000
+        },
+        {
+          "type": "string",
+          "value": "first order"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #3)",
+        "contract_error": "PriceNotPositive",
+        "caller_observes": "Error(Contract, #3)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "price must be greater than zero (contract error PriceNotPositive = 3).",
+        "likely_causes": [
+          "A negative or zero price was sent, possibly due to a signed-integer conversion error."
+        ],
+        "suggested_fixes": [
+          "Pass a positive price."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/expiry-in-past",
+      "title": "Order expiry at the current ledger",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "100"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 1000
+        },
+        {
+          "type": "string",
+          "value": "first order"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #4)",
+        "contract_error": "ExpiryInPast",
+        "caller_observes": "Error(Contract, #4)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "expiry_ledger must be after the current ledger sequence (contract error ExpiryInPast = 4).",
+        "likely_causes": [
+          "The expiry was computed from an old ledger sequence.",
+          "The transaction waited too long before it was included in a ledger."
+        ],
+        "suggested_fixes": [
+          "Compute expiry_ledger from the latest ledger (RPC getLatestLedger) plus a margin."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/expiry-too-far",
+      "title": "Order expiry beyond the allowed window",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "100"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 536681
+        },
+        {
+          "type": "string",
+          "value": "first order"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #5)",
+        "contract_error": "ExpiryTooFar",
+        "caller_observes": "Error(Contract, #5)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "expiry_ledger is more than 535,680 ledgers (~31 days) ahead (contract error ExpiryTooFar = 5).",
+        "likely_causes": [
+          "A timestamp was passed instead of a ledger sequence.",
+          "The expiry window is too long."
+        ],
+        "suggested_fixes": [
+          "Pass a ledger sequence, not a Unix timestamp.",
+          "Keep the expiry within MAX_EXPIRY_WINDOW ledgers of the current ledger."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/memo-too-long",
+      "title": "Memo longer than 32 bytes",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "100"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 2000
+        },
+        {
+          "type": "string",
+          "value": "this memo is definitely over 32 bytes"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #6)",
+        "contract_error": "MemoTooLong",
+        "caller_observes": "Error(Contract, #6)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "memo is longer than 32 bytes (contract error MemoTooLong = 6).",
+        "likely_causes": [
+          "Free-form user text was passed through without a length check.",
+          "Multi-byte UTF-8 characters made the memo longer in bytes than in characters."
+        ],
+        "suggested_fixes": [
+          "Trim or check the memo on the client; the limit is in bytes."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/missing-auth",
+      "title": "Create a valid order without the owner's authorization",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "i128",
+          "value": "100"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 2000
+        },
+        {
+          "type": "string",
+          "value": "first order"
+        }
+      ],
+      "auth": "none",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Auth, InvalidAction)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "authorization_failure",
+        "summary": "The order owner did not authorize the call. Authorization is checked before inputs are validated.",
+        "likely_causes": [
+          "The transaction was not signed by the account whose authorization the contract requires.",
+          "The authorization entry was built for different arguments, a different function, or a different contract.",
+          "The transaction was submitted without first simulating it to collect the required authorization entries."
+        ],
+        "suggested_fixes": [
+          "Check which address the failing function calls require_auth() on and make sure that account signs.",
+          "Re-simulate the transaction with the final arguments and sign the returned authorization entries.",
+          "Look in the diagnostic events for the address whose authorization failed."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/create_order/wrong-arg-type",
+      "title": "Pass a string where an i128 amount is expected",
+      "contract": "input-validator",
+      "function": "create_order",
+      "args": [
+        {
+          "type": "address",
+          "actor": "alice"
+        },
+        {
+          "type": "string",
+          "value": "100"
+        },
+        {
+          "type": "i128",
+          "value": "5"
+        },
+        {
+          "type": "u32",
+          "value": 2000
+        },
+        {
+          "type": "string",
+          "value": "memo"
+        }
+      ],
+      "auth": "mock_all",
+      "setup": {
+        "ledger_sequence": 1000
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(WasmVm, InvalidAction)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "An argument had the wrong type for the function signature. The contract's generated entry point failed to convert it and trapped before any contract logic ran. The error code alone looks the same as a contract panic, so the diagnostic events (or a check against the contract interface) are needed to confirm the cause.",
+        "likely_causes": [
+          "The client built arguments from an outdated contract interface.",
+          "A number was encoded as a string (or the reverse)."
+        ],
+        "suggested_fixes": [
+          "Regenerate client bindings from the deployed contract's interface (stellar contract bindings / contract info interface).",
+          "Check each argument's ScVal type against the function signature."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/get_order/not-found",
+      "title": "Fetch an order that does not exist",
+      "contract": "input-validator",
+      "function": "get_order",
+      "args": [
+        {
+          "type": "u64",
+          "value": "99"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #7)",
+        "contract_error": "OrderNotFound",
+        "caller_observes": "Error(Contract, #7)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "No order with this id exists (contract error OrderNotFound = 7).",
+        "likely_causes": [
+          "The id is wrong or comes from a different deployment of the contract.",
+          "The order was created on another network."
+        ],
+        "suggested_fixes": [
+          "Call order_count() to see which ids are valid.",
+          "Check the contract id and network."
+        ]
+      }
+    },
+    {
+      "id": "input-validator/get_order/existing",
+      "title": "Fetch an order that exists",
+      "contract": "input-validator",
+      "function": "get_order",
+      "args": [
+        {
+          "type": "u64",
+          "value": "0"
+        }
+      ],
+      "auth": "none",
+      "setup": {
+        "ledger_sequence": 1000,
+        "calls": [
+          {
+            "function": "create_order",
+            "args": [
+              {
+                "type": "address",
+                "actor": "alice"
+              },
+              {
+                "type": "i128",
+                "value": "100"
+              },
+              {
+                "type": "i128",
+                "value": "5"
+              },
+              {
+                "type": "u32",
+                "value": 2000
+              },
+              {
+                "type": "string",
+                "value": "first order"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "success"
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "The order created during setup is returned.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "execution-failure/checked_add/ok",
+      "title": "Add two small numbers",
+      "contract": "execution-failure",
+      "function": "checked_add",
+      "args": [
+        {
+          "type": "u64",
+          "value": "2"
+        },
+        {
+          "type": "u64",
+          "value": "3"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "u64",
+          "value": "5"
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "No overflow.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "execution-failure/checked_add/overflow",
+      "title": "Overflowing addition handled by the contract",
+      "contract": "execution-failure",
+      "function": "checked_add",
+      "args": [
+        {
+          "type": "u64",
+          "value": "18446744073709551615"
+        },
+        {
+          "type": "u64",
+          "value": "1"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #2)",
+        "contract_error": "Overflow",
+        "caller_observes": "Error(Contract, #2)"
+      },
+      "diagnosis": {
+        "category": "contract_execution_failure",
+        "summary": "The addition would overflow u64. The contract caught it and returned a structured error (contract error Overflow = 2).",
+        "likely_causes": [
+          "Input values are too large for the arithmetic type."
+        ],
+        "suggested_fixes": [
+          "Check the size of input values.",
+          "Consider a wider type such as u128 or i128."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/unchecked_add/overflow",
+      "title": "Overflowing addition that panics",
+      "contract": "execution-failure",
+      "function": "unchecked_add",
+      "args": [
+        {
+          "type": "u64",
+          "value": "18446744073709551615"
+        },
+        {
+          "type": "u64",
+          "value": "1"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(WasmVm, InvalidAction)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "contract_execution_failure",
+        "summary": "The contract trapped (panicked) during execution. A bare panic carries no contract error code, so the exact cause cannot be read from the error alone.",
+        "likely_causes": [
+          "Arithmetic overflow while overflow-checks is enabled.",
+          "unwrap()/expect() on a None or Err value.",
+          "An out-of-bounds index."
+        ],
+        "suggested_fixes": [
+          "Reproduce locally with the same arguments in a soroban-sdk test to see the panic message.",
+          "Build with the release-with-logs profile and read the diagnostic events.",
+          "Change the contract to return a #[contracterror] value instead of panicking."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/divide/ok",
+      "title": "Divide 10 by 3",
+      "contract": "execution-failure",
+      "function": "divide",
+      "args": [
+        {
+          "type": "i128",
+          "value": "10"
+        },
+        {
+          "type": "i128",
+          "value": "3"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "i128",
+          "value": "3"
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "Integer division rounds toward zero.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "execution-failure/divide/by-zero",
+      "title": "Divide by zero",
+      "contract": "execution-failure",
+      "function": "divide",
+      "args": [
+        {
+          "type": "i128",
+          "value": "10"
+        },
+        {
+          "type": "i128",
+          "value": "0"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #1)",
+        "contract_error": "DivisionByZero",
+        "caller_observes": "Error(Contract, #1)"
+      },
+      "diagnosis": {
+        "category": "contract_execution_failure",
+        "summary": "The divisor was zero (contract error DivisionByZero = 1).",
+        "likely_causes": [
+          "A zero denominator was passed or computed, for example an empty pool."
+        ],
+        "suggested_fixes": [
+          "Check for zero before calling, or handle the error in the calling code."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/divide/min-by-neg-one",
+      "title": "Divide i128::MIN by -1",
+      "contract": "execution-failure",
+      "function": "divide",
+      "args": [
+        {
+          "type": "i128",
+          "value": "-170141183460469231731687303715884105728"
+        },
+        {
+          "type": "i128",
+          "value": "-1"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #2)",
+        "contract_error": "Overflow",
+        "caller_observes": "Error(Contract, #2)"
+      },
+      "diagnosis": {
+        "category": "contract_execution_failure",
+        "summary": "i128::MIN / -1 is too large for i128 (contract error Overflow = 2).",
+        "likely_causes": [
+          "An edge-case input at the limit of the integer range."
+        ],
+        "suggested_fixes": [
+          "Reject or clamp values at the limits of the integer type."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/halt/panic-with-error",
+      "title": "Explicit panic_with_error!",
+      "contract": "execution-failure",
+      "function": "halt",
+      "args": [],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #4)",
+        "contract_error": "Halted",
+        "caller_observes": "Error(Contract, #4)"
+      },
+      "diagnosis": {
+        "category": "contract_execution_failure",
+        "summary": "The contract stopped on purpose with panic_with_error!, which keeps a contract error code (contract error Halted = 4).",
+        "likely_causes": [
+          "The contract hit a condition it treats as fatal."
+        ],
+        "suggested_fixes": [
+          "Look up what Halted means in the contract's error enum and source code."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/get_entry/missing",
+      "title": "Read a storage entry that does not exist",
+      "contract": "execution-failure",
+      "function": "get_entry",
+      "args": [
+        {
+          "type": "symbol",
+          "value": "missing"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #3)",
+        "contract_error": "MissingEntry",
+        "caller_observes": "Error(Contract, #3)"
+      },
+      "diagnosis": {
+        "category": "contract_execution_failure",
+        "summary": "Nothing is stored under the requested key (contract error MissingEntry = 3).",
+        "likely_causes": [
+          "The entry was never written.",
+          "The key is wrong.",
+          "A persistent entry's TTL ran out and it was archived. On a live network this has to be restored before it can be read."
+        ],
+        "suggested_fixes": [
+          "Write the entry first, or check the key.",
+          "On a network, check whether the entry was archived and restore it."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/get_entry/present",
+      "title": "Read a storage entry written during setup",
+      "contract": "execution-failure",
+      "function": "get_entry",
+      "args": [
+        {
+          "type": "symbol",
+          "value": "limit"
+        }
+      ],
+      "auth": "none",
+      "setup": {
+        "calls": [
+          {
+            "function": "set_entry",
+            "args": [
+              {
+                "type": "symbol",
+                "value": "limit"
+              },
+              {
+                "type": "u32",
+                "value": 10
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "u32",
+          "value": 10
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "The entry exists.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "execution-failure/set_entry/missing-auth",
+      "title": "Write an entry without admin authorization",
+      "contract": "execution-failure",
+      "function": "set_entry",
+      "args": [
+        {
+          "type": "symbol",
+          "value": "limit"
+        },
+        {
+          "type": "u32",
+          "value": 10
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Auth, InvalidAction)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "authorization_failure",
+        "summary": "set_entry requires the admin's authorization, and none was provided.",
+        "likely_causes": [
+          "The transaction was not signed by the account whose authorization the contract requires.",
+          "The authorization entry was built for different arguments, a different function, or a different contract.",
+          "The transaction was submitted without first simulating it to collect the required authorization entries."
+        ],
+        "suggested_fixes": [
+          "Check which address the failing function calls require_auth() on and make sure that account signs.",
+          "Re-simulate the transaction with the final arguments and sign the returned authorization entries.",
+          "Look in the diagnostic events for the address whose authorization failed."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/call_external/ok",
+      "title": "Cross-contract call to a deployed contract",
+      "contract": "execution-failure",
+      "function": "call_external",
+      "args": [
+        {
+          "type": "address",
+          "actor": "@auth-guard"
+        },
+        {
+          "type": "symbol",
+          "value": "value"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "success",
+        "return_value": {
+          "type": "u32",
+          "value": 1
+        }
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "The called contract exists and has this function.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "execution-failure/call_external/missing-contract",
+      "title": "Cross-contract call to an address with no contract",
+      "contract": "execution-failure",
+      "function": "call_external",
+      "args": [
+        {
+          "type": "address",
+          "actor": "unregistered_contract"
+        },
+        {
+          "type": "symbol",
+          "value": "value"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Storage, MissingValue)",
+        "caller_observes": "Error(Context, InvalidAction)"
+      },
+      "diagnosis": {
+        "category": "missing_contract_reference",
+        "summary": "The contract tried to call another contract, but no contract instance exists at that address.",
+        "likely_causes": [
+          "The contract address is wrong, or belongs to a different network (e.g. testnet vs mainnet).",
+          "The called contract's instance was archived (TTL ran out).",
+          "The contract was never deployed."
+        ],
+        "suggested_fixes": [
+          "Check the address with stellar contract info, or by looking it up on the target network.",
+          "Restore the instance if it was archived."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/call_external/missing-function",
+      "title": "Cross-contract call to a function that does not exist",
+      "contract": "execution-failure",
+      "function": "call_external",
+      "args": [
+        {
+          "type": "address",
+          "actor": "@auth-guard"
+        },
+        {
+          "type": "symbol",
+          "value": "does_not_exist"
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Context, MissingValue)",
+        "caller_observes": "Error(Context, InvalidAction)",
+        "wasm_error": "Error(WasmVm, MissingValue)"
+      },
+      "diagnosis": {
+        "category": "missing_contract_reference",
+        "summary": "The called contract exists but has no function with this name.",
+        "likely_causes": [
+          "The function name is misspelled.",
+          "The caller was built against a different version of the called contract."
+        ],
+        "suggested_fixes": [
+          "Compare the function name with the called contract's interface (stellar contract info interface)."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/hash_chain/within-budget",
+      "title": "Small hash chain within budget",
+      "contract": "execution-failure",
+      "function": "hash_chain",
+      "args": [
+        {
+          "type": "u32",
+          "value": 10
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "success"
+      },
+      "diagnosis": {
+        "category": "none",
+        "summary": "Ten SHA-256 iterations fit easily within the default budget.",
+        "likely_causes": [],
+        "suggested_fixes": []
+      }
+    },
+    {
+      "id": "execution-failure/hash_chain/budget-exceeded",
+      "title": "Hash chain that exceeds the CPU budget",
+      "contract": "execution-failure",
+      "function": "hash_chain",
+      "args": [
+        {
+          "type": "u32",
+          "value": 1000000
+        }
+      ],
+      "auth": "none",
+      "setup": {
+        "budget": "default"
+      },
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Budget, ExceededLimit)",
+        "caller_observes": null
+      },
+      "diagnosis": {
+        "category": "resource_limit_exceeded",
+        "summary": "The invocation used more CPU instructions than the budget allows. Budget errors cannot be recovered from: a calling contract cannot catch them.",
+        "likely_causes": [
+          "Work that grows with input size (here: the number of iterations) has no limit.",
+          "Too many host calls (hashing, storage, crypto) in one transaction."
+        ],
+        "suggested_fixes": [
+          "Simulate the transaction to measure CPU and memory use before submitting.",
+          "Limit the work done per call, or split it across several transactions.",
+          "Move heavy computation off-chain where possible."
+        ]
+      }
+    },
+    {
+      "id": "execution-failure/hash_chain/too-many-iterations",
+      "title": "Hash chain iteration count above the contract limit",
+      "contract": "execution-failure",
+      "function": "hash_chain",
+      "args": [
+        {
+          "type": "u32",
+          "value": 1000001
+        }
+      ],
+      "auth": "none",
+      "expected": {
+        "outcome": "failure",
+        "error": "Error(Contract, #5)",
+        "contract_error": "TooManyIterations",
+        "caller_observes": "Error(Contract, #5)"
+      },
+      "diagnosis": {
+        "category": "invalid_arguments",
+        "summary": "iterations is above MAX_HASH_ITERATIONS (contract error TooManyIterations = 5).",
+        "likely_causes": [],
+        "suggested_fixes": [
+          "Pass iterations <= 1,000,000."
+        ]
+      }
+    }
+  ]
+}

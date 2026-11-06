@@ -1,0 +1,34 @@
+name: New failure scenario
+description: Propose a new Soroban failure for the fixture catalog
+labels: ["scenario"]
+body:
+  - type: textarea
+    id: failure
+    attributes:
+      label: Failure to demonstrate
+      description: What goes wrong, and why is it worth diagnosing?
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category (docs/diagnostic-terminology.md)
+      options:
+        - authorization_failure
+        - invalid_arguments
+        - contract_execution_failure
+        - resource_limit_exceeded
+        - missing_contract_reference
+        - other / unsure
+    validations:
+      required: true
+  - type: input
+    id: error
+    attributes:
+      label: Expected error
+      description: e.g. `Error(Storage, MissingValue)`. Say how you know it (observed, source code, docs).
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction idea
+      description: Contract function sketch, arguments, authorization setup.

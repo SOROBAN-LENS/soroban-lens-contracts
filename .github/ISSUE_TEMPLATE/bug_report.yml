@@ -1,0 +1,29 @@
+name: Bug report
+description: A contract, the scenario runner, a script or the docs behaves incorrectly
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the exact command and full output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: input
+    id: scenario
+    attributes:
+      label: Scenario id or contract (if applicable)
+      placeholder: auth-guard/set_value/missing-auth
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Output of `rustc --version`, `stellar --version`, OS, network (local/testnet).
+    validations:
+      required: true
