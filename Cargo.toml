@@ -1,0 +1,36 @@
+[workspace]
+resolver = "2"
+members = [
+    "contracts/auth-guard",
+    "contracts/input-validator",
+    "contracts/execution-failure",
+    "crates/scenario-runner",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/soroban-lens/soroban-lens-contracts"
+publish = false
+
+[workspace.dependencies]
+# Pinned to the latest stable soroban-sdk release at the time of writing
+# (29.0.1). 30.x was only available as a release candidate.
+soroban-sdk = "29.0.1"
+
+# Recommended release profile for Soroban contracts (small, deterministic Wasm).
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+# Same as release but keeps debug logging (`log!`) available for diagnostics.
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

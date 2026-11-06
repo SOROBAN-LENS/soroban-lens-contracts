@@ -1,0 +1,23 @@
+[package]
+name = "execution-failure"
+description = "SorobanLens diagnostic fixture contract: execution-failure"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[features]
+# Enables the generated test client + testutils for downstream test crates
+# (used by crates/scenario-runner). Never enabled for Wasm builds.
+testutils = ["soroban-sdk/testutils"]
